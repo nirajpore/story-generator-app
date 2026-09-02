@@ -6,7 +6,7 @@ export default function StoryGenerator({ onGenerate, loading }) {
   const [formData, setFormData] = useState({
     characterName: '',
     setting: '',
-    theme: 'adventure',
+    rwLevel: 'blue',
   });
 
   const handleChange = (e) => {
@@ -57,19 +57,20 @@ export default function StoryGenerator({ onGenerate, loading }) {
         </div>
 
         <div className="form-group">
-          <label htmlFor="theme">Story Theme</label>
+          <label htmlFor="rwLevel">RWI Reading Level</label>
           <select
-            id="theme"
-            name="theme"
-            value={formData.theme}
+            id="rwLevel"
+            name="rwLevel"
+            value={formData.rwLevel}
             onChange={handleChange}
             disabled={loading}
           >
-            <option value="adventure">Adventure</option>
-            <option value="fantasy">Fantasy</option>
-            <option value="mystery">Mystery</option>
-            <option value="friendship">Friendship</option>
-            <option value="magic">Magic</option>
+            <option value="purple">Purple (Easiest)</option>
+            <option value="pink">Pink</option>
+            <option value="orange">Orange</option>
+            <option value="yellow">Yellow</option>
+            <option value="blue">Blue</option>
+            <option value="grey">Grey (Most Advanced)</option>
           </select>
         </div>
 
