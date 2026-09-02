@@ -26,7 +26,7 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
 
   return (
     <div>
-      <button onClick={onBack} style={{ marginBottom: '20px' }}>← Back to Stories</button>
+      <button onClick={onBack} style={{ marginBottom: '20px' }}>Back to Stories</button>
       
       <div className="story-container">
         <h2>{story.title}</h2>
@@ -36,18 +36,18 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
         </div>
 
         <div className="story-meta">
-          <p>📅 {formattedDate}</p>
-          {story.characterName && <p>🎭 Character: {story.characterName}</p>}
-          {story.setting && <p>🏰 Setting: {story.setting}</p>}
-          <p>📚 Theme: {story.theme}</p>
+          <p>Date: {formattedDate}</p>
+          {story.characterName && <p>Character: {story.characterName}</p>}
+          {story.setting && <p>Setting: {story.setting}</p>}
+          <p>Theme: {story.theme}</p>
         </div>
 
         <div style={{ marginTop: '30px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button onClick={handleShare} style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-            {copied ? '✓ Link Copied!' : '🔗 Share Story'}
+            {copied ? 'Link Copied!' : 'Share Story'}
           </button>
           <button onClick={handleDelete} style={{ background: 'linear-gradient(135deg, #f5576c 0%, #f093fb 100%)' }}>
-            🗑️ Delete
+            Delete
           </button>
         </div>
       </div>

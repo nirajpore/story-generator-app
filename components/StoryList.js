@@ -4,8 +4,8 @@ export default function StoryList({ stories, onSelect, onDelete }) {
   if (stories.length === 0) {
     return (
       <div className="card" style={{ background: 'rgba(255, 255, 255, 0.95)', textAlign: 'center' }}>
-        <h2 style={{ color: '#667eea' }}>📚 Your Stories</h2>
-        <p style={{ color: '#999', fontSize: '16px' }}>No stories yet. Create your first one! ✨</p>
+        <h2 style={{ color: '#667eea' }}>Your Stories</h2>
+        <p style={{ color: '#999', fontSize: '16px' }}>No stories yet. Create your first one!</p>
       </div>
     );
   }
@@ -13,7 +13,7 @@ export default function StoryList({ stories, onSelect, onDelete }) {
   return (
     <div>
       <div className="card" style={{ background: 'rgba(255, 255, 255, 0.95)' }}>
-        <h2 style={{ color: '#667eea' }}>📚 Your Stories ({stories.length})</h2>
+        <h2 style={{ color: '#667eea' }}>Your Stories ({stories.length})</h2>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {stories.map((story) => (

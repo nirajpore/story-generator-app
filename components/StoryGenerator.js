@@ -28,7 +28,7 @@ export default function StoryGenerator({ onGenerate, loading }) {
 
   return (
     <div className="card" style={{ background: 'rgba(255, 255, 255, 0.95)' }}>
-      <h2 style={{ color: '#667eea' }}>📖 Create a New Story</h2>
+      <h2 style={{ color: '#667eea' }}>Create a New Story</h2>
       <form onSubmit={handleSubmit}>
         <div className="form-group">
           <label htmlFor="characterName">Character Name</label>
@@ -65,23 +65,16 @@ export default function StoryGenerator({ onGenerate, loading }) {
             onChange={handleChange}
             disabled={loading}
           >
-            <option value="adventure">🗺️ Adventure</option>
-            <option value="fantasy">🧙 Fantasy</option>
-            <option value="mystery">🔍 Mystery</option>
-            <option value="friendship">👫 Friendship</option>
-            <option value="magic">✨ Magic</option>
+            <option value="adventure">Adventure</option>
+            <option value="fantasy">Fantasy</option>
+            <option value="mystery">Mystery</option>
+            <option value="friendship">Friendship</option>
+            <option value="magic">Magic</option>
           </select>
         </div>
 
         <button type="submit" disabled={loading}>
-          {loading ? (
-            <>
-              <span className="loading" style={{ marginRight: '10px', display: 'inline-block' }} />
-              Generating...
-            </>
-          ) : (
-            '✨ Generate Story'
-          )}
+          {loading ? 'Generating...' : 'Generate Story'}
         </button>
       </form>
     </div>

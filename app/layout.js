@@ -1,1 +1,18 @@
-import './globals.css';\n\nexport const metadata = {\n  title: 'Story Generator - Tales for Kids',\n  description: 'AI-powered story generator for children',\n  viewport: 'width=device-width, initial-scale=1',\n};\n\nexport default function RootLayout({ children }) {\n  return (\n    <html lang=\"en\">\n      <head>\n        <meta charSet=\"utf-8\" />\n        <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n      </head>\n      <body>\n        <div className=\"container\">\n          {children}\n        </div>\n      </body>\n    </html>\n  );\n}\n
+import './globals.css';
+
+export const metadata = {
+  title: 'Story Generator - Tales for Kids',
+  description: 'AI-powered story generator for children',
+};
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang="en">
+      <body>
+        <div className="container">
+          {children}
+        </div>
+      </body>
+    </html>
+  );
+}

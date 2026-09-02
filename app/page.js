@@ -10,7 +10,6 @@ export default function Home() {
   const [selectedStory, setSelectedStory] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // Load stories from localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem('stories');
     if (saved) {
@@ -22,7 +21,6 @@ export default function Home() {
     }
   }, []);
 
-  // Save stories to localStorage whenever they change
   useEffect(() => {
     localStorage.setItem('stories', JSON.stringify(stories));
   }, [stories]);
@@ -70,7 +68,7 @@ export default function Home() {
   return (
     <div>
       <header style={{ textAlign: 'center', marginBottom: '30px' }}>
-        <h1>✨ Story Generator ✨</h1>
+        <h1>Story Generator</h1>
         <p style={{ color: '#fff', fontSize: '18px' }}>Create magical stories for your loved ones!</p>
       </header>
 
