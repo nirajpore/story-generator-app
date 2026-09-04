@@ -13,7 +13,6 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
   const [lastSpokeTime, setLastSpokeTime] = useState(Date.now());
   const timerRef = useRef(null);
   const recognitionRef = useRef(null);
-  const hintTimerRef = useRef(null);
   const pauseTimerRef = useRef(null);
   const storyWordsRef = useRef([]);
 
@@ -30,33 +29,28 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
         setHint(null); // Clear hints when speaking
         
         let interimTranscript = '';
-        let finalTranscript = transcript;
-        let hasNewResult = false;
+        let finalTranscript = '';
         
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const transcript_chunk = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
             finalTranscript += transcript_chunk + ' ';
-            hasNewResult = true;
           } else {
             interimTranscript += transcript_chunk;
           }
         }
         
-        const updatedTranscript = finalTranscript + interimTranscript;
+        const updatedTranscript = transcript + finalTranscript + interimTranscript;
         setTranscript(updatedTranscript);
         
-        // Update current word index based on words spoken
-        if (hasNewResult) {
-          const readWords = updatedTranscript.toLowerCase().split(/\s+/).filter(w => w.length > 0);
-          setCurrentWordIndex(Math.min(readWords.length, storyWordsRef.current.length));
-        }
+        // Update current word index based on TOTAL transcript
+        const readWords = updatedTranscript.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+        setCurrentWordIndex(Math.min(readWords.length, storyWordsRef.current.length));
       };
     }
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
-      if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
       if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
       if (recognitionRef.current) recognitionRef.current.abort();
     };
@@ -90,7 +84,6 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
     // Simple phonetic breakdown using common phoneme patterns for RWI phonics
     const phonemes = [];
     let i = 0;
-    const vowels = 'aeiou';
     const consonantBlends = ['ch', 'sh', 'th', 'ph', 'qu', 'wh', 'st', 'sp', 'sk', 'sw', 'tr', 'dr', 'br', 'fr', 'gr', 'pr', 'bl', 'cl', 'fl', 'gl', 'pl', 'sl'];
     const endBlends = ['ng', 'nk', 'nd', 'nt', 'st', 'sp', 'sk', 'ck', 'th', 'ch', 'sh', 'tch', 'dge'];
 
@@ -126,7 +119,7 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
   const speakWord = (word) => {
     if ('speechSynthesis' in window) {
       const utterance = new SpeechSynthesisUtterance(word);
-      utterance.rate = 0.8; // Slower speech for clarity
+      utterance.rate = 0.8;
       utterance.pitch = 1.0;
       speechSynthesis.cancel();
       speechSynthesis.speak(utterance);
@@ -142,7 +135,7 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
     setHint(null);
     setLastSpokeTime(Date.now());
     
-    // Parse story words
+    // Parse story words - use cleaned version
     const cleanText = (text) => 
       text.toLowerCase()
         .replace(/[.!?,;:\-—–]/g, '')
@@ -161,9 +154,8 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
     }
   };
 
-  const handleFinishReading = async () => {
+  const handleFinishReading = () => {
     if (timerRef.current) clearInterval(timerRef.current);
-    if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
     if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
     if (recognitionRef.current) recognitionRef.current.stop();
     
@@ -332,10 +324,21 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
     day: 'numeric',
   });
 
+  // Format story into paragraphs (every 40-50 words)
+  const formatStoryIntoParagraphs = (content) => {
+    const words = content.split(/\s+/);
+    const paragraphs = [];
+    const sentencesPerParagraph = 40;
+    
+    for (let i = 0; i < words.length; i += sentencesPerParagraph) {
+      paragraphs.push(words.slice(i, i + sentencesPerParagraph).join(' '));
+    }
+    return paragraphs;
+  };
+
   // Render story with highlighted current word - preserves paragraphs
   const renderStoryWithHighlight = () => {
-    // Split by paragraphs first
-    const paragraphs = story.content.split('\n\n');
+    const paragraphs = formatStoryIntoParagraphs(story.content);
     let wordCounter = 0;
     
     return paragraphs.map((paragraph, pIdx) => {
@@ -371,6 +374,14 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
     });
   };
 
+  // Display story normally (not reading mode)
+  const displayStory = () => {
+    const paragraphs = formatStoryIntoParagraphs(story.content);
+    return paragraphs.map((paragraph, idx) => (
+      <p key={idx} style={{ marginBottom: '15px' }}>{paragraph}</p>
+    ));
+  };
+
   return (
     <div>
       <button onClick={onBack} style={{ marginBottom: '20px' }}>← Back to Stories</button>
@@ -386,9 +397,7 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
         </div>
 
         <div className="story-content" style={{ marginBottom: '30px', lineHeight: '1.8', fontSize: '18px' }}>
-          {isReading ? renderStoryWithHighlight() : story.content.split('\n\n').map((para, idx) => (
-            <p key={idx} style={{ marginBottom: '15px' }}>{para}</p>
-          ))}
+          {isReading ? renderStoryWithHighlight() : displayStory()}
         </div>
 
         {/* Hint System */}
