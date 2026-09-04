@@ -17,7 +17,7 @@ export async function POST(request) {
       console.warn('GEMINI_API_KEY not configured, using placeholder story');
       return new Response(
         JSON.stringify({ 
-          story: generatePlaceholderStory(characterName, setting, rwLevel),
+          story: formatStoryParagraphs(generatePlaceholderStory(characterName, setting, rwLevel)),
           rwLevel: rwLevel
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -67,6 +67,7 @@ export async function POST(request) {
       const result = await response.json();
       let story = result?.candidates?.[0]?.content?.parts?.[0]?.text || 
                   generatePlaceholderStory(characterName, setting, rwLevel);
+      story = formatStoryParagraphs(story);
 
       return new Response(
         JSON.stringify({ story, rwLevel }),
@@ -76,7 +77,7 @@ export async function POST(request) {
       console.error('Fetch error:', fetchError.message);
       return new Response(
         JSON.stringify({
-          story: generatePlaceholderStory(characterName, setting, rwLevel),
+          story: formatStoryParagraphs(generatePlaceholderStory(characterName, setting, rwLevel)),
           rwLevel: rwLevel,
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -86,7 +87,7 @@ export async function POST(request) {
     console.error('Error:', error);
     return new Response(
       JSON.stringify({ 
-        story: 'Once upon a time, there was an adventure waiting to happen...'
+        story: formatStoryParagraphs('Once upon a time, there was an adventure waiting to happen...')
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
@@ -131,4 +132,27 @@ function generatePlaceholderStory(characterName, setting, rwLevel) {
   };
 
   return stories[rwLevel] || stories['blue'];
+}
+
+function formatStoryParagraphs(story) {
+  const normalizedStory = story.replace(/\r\n/g, '\n').trim();
+
+  if (!normalizedStory) return story;
+
+  if (normalizedStory.includes('\n')) {
+    return normalizedStory
+      .split(/\n\s*\n/)
+      .map((paragraph) => paragraph.trim())
+      .filter(Boolean)
+      .join('\n\n');
+  }
+
+  const sentences = normalizedStory.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [normalizedStory];
+  const paragraphs = [];
+
+  for (let i = 0; i < sentences.length; i += 2) {
+    paragraphs.push(sentences.slice(i, i + 2).join(' ').trim());
+  }
+
+  return paragraphs.join('\n\n');
 }

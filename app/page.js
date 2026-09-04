@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import StoryGenerator from '@/components/StoryGenerator';
 import StoryDisplay from '@/components/StoryDisplay';
 import StoryList from '@/components/StoryList';
@@ -9,6 +9,7 @@ export default function Home() {
   const [stories, setStories] = useState([]);
   const [selectedStory, setSelectedStory] = useState(null);
   const [loading, setLoading] = useState(false);
+  const hasLoadedStoriesRef = useRef(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('stories');
@@ -19,9 +20,12 @@ export default function Home() {
         console.error('Failed to parse saved stories:', e);
       }
     }
+
+    hasLoadedStoriesRef.current = true;
   }, []);
 
   useEffect(() => {
+    if (!hasLoadedStoriesRef.current) return;
     localStorage.setItem('stories', JSON.stringify(stories));
   }, [stories]);
 
@@ -49,7 +53,7 @@ export default function Home() {
         createdAt: new Date().toISOString(),
       };
 
-      setStories([newStory, ...stories]);
+      setStories((prevStories) => [newStory, ...prevStories]);
       setSelectedStory(newStory);
     } catch (error) {
       alert('Error generating story: ' + error.message);
@@ -59,7 +63,7 @@ export default function Home() {
   };
 
   const handleDeleteStory = (id) => {
-    setStories(stories.filter((story) => story.id !== id));
+    setStories((prevStories) => prevStories.filter((story) => story.id !== id));
     if (selectedStory?.id === id) {
       setSelectedStory(null);
     }
