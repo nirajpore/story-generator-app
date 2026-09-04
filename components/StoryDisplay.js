@@ -8,8 +8,14 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
   const [readingTime, setReadingTime] = useState(0);
   const [evaluation, setEvaluation] = useState(null);
   const [transcript, setTranscript] = useState('');
+  const [currentWordIndex, setCurrentWordIndex] = useState(0);
+  const [hint, setHint] = useState(null);
+  const [lastSpokeTime, setLastSpokeTime] = useState(Date.now());
   const timerRef = useRef(null);
   const recognitionRef = useRef(null);
+  const hintTimerRef = useRef(null);
+  const pauseTimerRef = useRef(null);
+  const storyWordsRef = useRef([]);
 
   useEffect(() => {
     // Initialize Web Speech API
@@ -18,33 +24,131 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
       recognitionRef.current = new SpeechRecognition();
       recognitionRef.current.continuous = true;
       recognitionRef.current.interimResults = true;
+      
       recognitionRef.current.onresult = (event) => {
+        setLastSpokeTime(Date.now());
+        setHint(null); // Clear hints when speaking
+        
         let interimTranscript = '';
         let finalTranscript = transcript;
+        let hasNewResult = false;
         
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript;
+          const transcript_chunk = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
-            finalTranscript += transcript + ' ';
+            finalTranscript += transcript_chunk + ' ';
+            hasNewResult = true;
           } else {
-            interimTranscript += transcript;
+            interimTranscript += transcript_chunk;
           }
         }
-        setTranscript(finalTranscript + interimTranscript);
+        
+        const updatedTranscript = finalTranscript + interimTranscript;
+        setTranscript(updatedTranscript);
+        
+        // Update current word index based on words spoken
+        if (hasNewResult) {
+          const readWords = updatedTranscript.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+          setCurrentWordIndex(Math.min(readWords.length, storyWordsRef.current.length));
+        }
       };
     }
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+      if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
       if (recognitionRef.current) recognitionRef.current.abort();
     };
-  }, []);
+  }, [transcript]);
+
+  // Monitor for pauses and show hints
+  useEffect(() => {
+    if (!isReading) return;
+
+    if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
+
+    pauseTimerRef.current = setTimeout(() => {
+      const timeSinceLast = Date.now() - lastSpokeTime;
+      
+      if (timeSinceLast >= 2000 && !hint && currentWordIndex < storyWordsRef.current.length) {
+        // Show phonetic hint after 2 seconds of silence
+        const currentWord = storyWordsRef.current[currentWordIndex];
+        if (currentWord) {
+          const phonetic = getPhoneticBreakdown(currentWord);
+          setHint({ type: 'phonetic', word: currentWord, phonetic });
+        }
+      }
+    }, 2000);
+
+    return () => {
+      if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
+    };
+  }, [isReading, lastSpokeTime, currentWordIndex, hint]);
+
+  const getPhoneticBreakdown = (word) => {
+    // Simple phonetic breakdown using common phoneme patterns for RWI phonics
+    const phonemes = [];
+    let i = 0;
+    const vowels = 'aeiou';
+    const consonantBlends = ['ch', 'sh', 'th', 'ph', 'qu', 'wh', 'st', 'sp', 'sk', 'sw', 'tr', 'dr', 'br', 'fr', 'gr', 'pr', 'bl', 'cl', 'fl', 'gl', 'pl', 'sl'];
+    const endBlends = ['ng', 'nk', 'nd', 'nt', 'st', 'sp', 'sk', 'ck', 'th', 'ch', 'sh', 'tch', 'dge'];
+
+    while (i < word.length) {
+      // Check for two-letter blends at start
+      if (i === 0 && i + 1 < word.length) {
+        const twoLetter = word.substring(i, i + 2).toLowerCase();
+        if (consonantBlends.includes(twoLetter)) {
+          phonemes.push(twoLetter);
+          i += 2;
+          continue;
+        }
+      }
+
+      // Check for two-letter blends at end
+      if (i === word.length - 2) {
+        const twoLetter = word.substring(i).toLowerCase();
+        if (endBlends.includes(twoLetter)) {
+          phonemes.push(twoLetter);
+          i += 2;
+          continue;
+        }
+      }
+
+      // Add individual letters/phonemes
+      phonemes.push(word[i]);
+      i++;
+    }
+
+    return phonemes.join('-');
+  };
+
+  const speakWord = (word) => {
+    if ('speechSynthesis' in window) {
+      const utterance = new SpeechSynthesisUtterance(word);
+      utterance.rate = 0.8; // Slower speech for clarity
+      utterance.pitch = 1.0;
+      speechSynthesis.cancel();
+      speechSynthesis.speak(utterance);
+    }
+  };
 
   const handleStartReading = () => {
     setIsReading(true);
     setReadingTime(0);
     setTranscript('');
     setEvaluation(null);
+    setCurrentWordIndex(0);
+    setHint(null);
+    setLastSpokeTime(Date.now());
+    
+    // Parse story words
+    const cleanText = (text) => 
+      text.toLowerCase()
+        .replace(/[.!?,;:\-—–]/g, '')
+        .split(/\s+/)
+        .filter(w => w.length > 0);
+    storyWordsRef.current = cleanText(story.content);
     
     // Start timer
     timerRef.current = setInterval(() => {
@@ -59,6 +163,8 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
 
   const handleFinishReading = async () => {
     if (timerRef.current) clearInterval(timerRef.current);
+    if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+    if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
     if (recognitionRef.current) recognitionRef.current.stop();
     
     setIsReading(false);
@@ -109,7 +215,6 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
       for (let i = 0; i < storyWords.length; i++) {
         if (!matchedIndices.has(i)) {
           const similarity = calculateSimilarity(readWord, storyWords[i]);
-          // Accept matches with 70% or higher similarity (more forgiving)
           if (similarity >= 0.7) {
             matchedCount++;
             matchedIndices.add(i);
@@ -125,45 +230,38 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
   const evaluateReading = (transcript, storyContent, timeTaken) => {
     let stars = 0;
     
-    // Clean and split text
     const cleanText = (text) => 
       text.toLowerCase()
-        .replace(/[.!?,;:\-—–]/g, '') // Remove punctuation
+        .replace(/[.!?,;:\-—–]/g, '')
         .split(/\s+/)
         .filter(w => w.length > 0);
 
     const storyWords = cleanText(storyContent);
     const readWords = cleanText(transcript);
 
-    // Better word matching
     const { matchedCount, totalStoryWords } = matchWords(readWords, storyWords);
     const accuracy = (matchedCount / totalStoryWords) * 100;
     
-    // Accuracy scoring (3 stars) - more forgiving
     if (accuracy >= 85) stars += 3;
     else if (accuracy >= 70) stars += 2.5;
     else if (accuracy >= 55) stars += 2;
     else if (accuracy >= 40) stars += 1.5;
     else stars += 1;
 
-    // Fluency scoring (3 stars) - based on reading speed
-    // Expected: ~100 words per minute for year 1 readers (0.6 sec per word)
     const expectedReadingTime = totalStoryWords * 0.6;
     const readingSpeedRatio = timeTaken / expectedReadingTime;
     
-    if (readingSpeedRatio >= 0.8 && readingSpeedRatio <= 1.2) stars += 3; // Just right
+    if (readingSpeedRatio >= 0.8 && readingSpeedRatio <= 1.2) stars += 3;
     else if (readingSpeedRatio >= 0.7 && readingSpeedRatio <= 1.4) stars += 2.5;
     else if (readingSpeedRatio >= 0.6 && readingSpeedRatio <= 1.6) stars += 2;
     else stars += 1.5;
 
-    // Confidence/Completeness scoring (2 stars) - based on words read
     const confidenceRatio = (matchedCount / totalStoryWords);
     if (confidenceRatio >= 0.85) stars += 2;
     else if (confidenceRatio >= 0.70) stars += 1.5;
     else if (confidenceRatio >= 0.50) stars += 1;
     else stars += 0.5;
 
-    // Comprehension bonus (2 stars) - simplified but encouraging
     if (matchedCount > totalStoryWords * 0.5) stars += 1.5;
     else stars += 1;
 
@@ -234,6 +332,31 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
     day: 'numeric',
   });
 
+  // Render story with highlighted current word
+  const renderStoryWithHighlight = () => {
+    const words = story.content.split(/\s+/);
+    return words.map((word, idx) => {
+      const isCurrentWord = idx === currentWordIndex;
+      const isRead = idx < currentWordIndex;
+      
+      return (
+        <span
+          key={idx}
+          style={{
+            backgroundColor: isCurrentWord ? '#ffd700' : isRead ? '#90EE90' : 'transparent',
+            padding: '2px 4px',
+            borderRadius: '3px',
+            marginRight: '4px',
+            fontWeight: isCurrentWord ? 'bold' : 'normal',
+            transition: 'background-color 0.3s',
+          }}
+        >
+          {word}
+        </span>
+      );
+    });
+  };
+
   return (
     <div>
       <button onClick={onBack} style={{ marginBottom: '20px' }}>← Back to Stories</button>
@@ -248,9 +371,44 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
           {story.setting && <p><strong>Setting:</strong> {story.setting}</p>}
         </div>
 
-        <div className="story-content" style={{ marginBottom: '30px', lineHeight: '1.8', fontSize: '18px' }}>
-          {story.content}
+        <div className="story-content" style={{ marginBottom: '30px', lineHeight: '2', fontSize: '18px' }}>
+          {isReading ? renderStoryWithHighlight() : story.content}
         </div>
+
+        {/* Hint System */}
+        {isReading && hint && (
+          <div style={{ 
+            background: '#fff3cd', 
+            padding: '15px', 
+            borderRadius: '8px', 
+            marginBottom: '20px',
+            border: '2px solid #ffc107'
+          }}>
+            {hint.type === 'phonetic' && (
+              <>
+                <p style={{ margin: '0 0 10px 0', fontSize: '16px', fontWeight: 'bold' }}>🔤 Sound it out:</p>
+                <p style={{ margin: '0 0 10px 0', fontSize: '20px', color: '#ff6b6b', fontWeight: 'bold', fontFamily: 'monospace' }}>
+                  {hint.phonetic}
+                </p>
+                <button
+                  onClick={() => speakWord(hint.word)}
+                  style={{
+                    background: '#ffc107',
+                    padding: '8px 15px',
+                    borderRadius: '5px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    color: '#000',
+                  }}
+                >
+                  🔊 Hear it
+                </button>
+              </>
+            )}
+          </div>
+        )}
 
         {!isReading && !evaluation && (
           <button 
@@ -259,7 +417,11 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
               background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
               padding: '12px 30px',
               fontSize: '16px',
-              marginBottom: '20px'
+              marginBottom: '20px',
+              color: 'white',
+              border: 'none',
+              borderRadius: '5px',
+              cursor: 'pointer',
             }}
           >
             🎤 Start Reading Practice
@@ -280,6 +442,10 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
                 background: 'linear-gradient(135deg, #f5576c 0%, #f093fb 100%)',
                 padding: '12px 30px',
                 fontSize: '16px',
+                color: 'white',
+                border: 'none',
+                borderRadius: '5px',
+                cursor: 'pointer',
               }}
             >
               ✓ Finish Reading
@@ -308,11 +474,17 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
                 setEvaluation(null);
                 setTranscript('');
                 setReadingTime(0);
+                setCurrentWordIndex(0);
+                setHint(null);
               }}
               style={{
                 background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                 padding: '10px 20px',
                 marginRight: '10px',
+                color: 'white',
+                border: 'none',
+                borderRadius: '5px',
+                cursor: 'pointer',
               }}
             >
               Try Again
@@ -322,11 +494,31 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
 
         {!isReading && (
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '20px' }}>
-            <button onClick={handleShare} style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-              {copied ? 'Link Copied!' : 'Share Story'}
+            <button 
+              onClick={handleShare} 
+              style={{ 
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                color: 'white',
+                padding: '10px 20px',
+                border: 'none',
+                borderRadius: '5px',
+                cursor: 'pointer',
+              }}
+            >
+              {copied ? '✓ Link Copied!' : '📤 Share Story'}
             </button>
-            <button onClick={handleDelete} style={{ background: 'linear-gradient(135deg, #f5576c 0%, #f093fb 100%)' }}>
-              Delete
+            <button 
+              onClick={handleDelete} 
+              style={{ 
+                background: 'linear-gradient(135deg, #f5576c 0%, #f093fb 100%)',
+                color: 'white',
+                padding: '10px 20px',
+                border: 'none',
+                borderRadius: '5px',
+                cursor: 'pointer',
+              }}
+            >
+              🗑️ Delete
             </button>
           </div>
         )}
