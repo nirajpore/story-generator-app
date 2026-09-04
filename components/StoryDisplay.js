@@ -8,13 +8,11 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
   const [readingTime, setReadingTime] = useState(0);
   const [evaluation, setEvaluation] = useState(null);
   const [transcript, setTranscript] = useState('');
-  const [hint, setHint] = useState(null);
-  const [lastSpokeTime, setLastSpokeTime] = useState(Date.now());
   
   const timerRef = useRef(null);
   const recognitionRef = useRef(null);
-  const pauseTimerRef = useRef(null);
-  const storyWordsRef = useRef([]);\n
+  const storyWordsRef = useRef([]);
+
   useEffect(() => {
     // Initialize Web Speech API
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -24,8 +22,6 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
       recognitionRef.current.interimResults = true;
       
       recognitionRef.current.onresult = (event) => {
-        setLastSpokeTime(Date.now());
-        setHint(null);\n        
         let interimTranscript = '';
         let finalTranscript = '';\n        
         for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -41,94 +37,9 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
     }\n
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
-      if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
       if (recognitionRef.current) recognitionRef.current.abort();
     };
   }, []);\n
-  // Monitor for pauses and show hints
-  useEffect(() => {
-    if (!isReading) return;\n
-    if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);\n
-    pauseTimerRef.current = setTimeout(() => {
-      const timeSinceLast = Date.now() - lastSpokeTime;\n      
-      if (timeSinceLast >= 2000 && !hint && transcript.trim()) {
-        // Show phonetic hint after 2 seconds of silence
-        const words = transcript.toLowerCase().split(/\\s+/).filter(w => w.length > 0);
-        if (words.length > 0) {
-          const lastWord = words[words.length - 1];
-          const phonetic = getPhoneticBreakdown(lastWord);
-          setHint({ type: 'phonetic', word: lastWord, phonetic });
-        }
-      }
-    }, 2000);\n
-    return () => {
-      if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
-    };
-  }, [isReading, lastSpokeTime, transcript, hint]);\n
-  const getPhoneticBreakdown = (word) => {
-    const phonemes = [];
-    let i = 0;
-    const consonantBlends = ['ch', 'sh', 'th', 'ph', 'qu', 'wh', 'st', 'sp', 'sk', 'sw', 'tr', 'dr', 'br', 'fr', 'gr', 'pr', 'bl', 'cl', 'fl', 'gl', 'pl', 'sl'];
-    const endBlends = ['ng', 'nk', 'nd', 'nt', 'st', 'sp', 'sk', 'ck', 'th', 'ch', 'sh', 'tch', 'dge'];\n
-    while (i < word.length) {
-      if (i === 0 && i + 1 < word.length) {
-        const twoLetter = word.substring(i, i + 2).toLowerCase();
-        if (consonantBlends.includes(twoLetter)) {
-          phonemes.push(twoLetter);
-          i += 2;
-          continue;
-        }
-      }\n
-      if (i === word.length - 2) {
-        const twoLetter = word.substring(i).toLowerCase();
-        if (endBlends.includes(twoLetter)) {
-          phonemes.push(twoLetter);
-          i += 2;
-          continue;
-        }
-      }\n
-      phonemes.push(word[i]);
-      i++;
-    }\n
-    return phonemes.join('-');
-  };\n
-  const speakWord = (word) => {
-    if ('speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(word);
-      utterance.rate = 0.8;
-      utterance.pitch = 1.0;
-      speechSynthesis.cancel();
-      speechSynthesis.speak(utterance);
-    }
-  };\n
-  const handleStartReading = () => {
-    setIsReading(true);
-    setReadingTime(0);
-    setTranscript('');
-    setEvaluation(null);
-    setHint(null);
-    setLastSpokeTime(Date.now());\n    
-    const cleanText = (text) => 
-      text.toLowerCase()
-        .replace(/[.!?,;:\\-—–]/g, '')
-        .split(/\\s+/)
-        .filter(w => w.length > 0);
-    storyWordsRef.current = cleanText(story.content);\n    
-    timerRef.current = setInterval(() => {
-      setReadingTime((prev) => prev + 1);
-    }, 1000);\n
-    if (recognitionRef.current) {
-      recognitionRef.current.start();
-    }
-  };\n
-  const handleFinishReading = () => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
-    if (recognitionRef.current) recognitionRef.current.stop();\n    
-    setIsReading(false);
-    const evaluation_result = evaluateReading(transcript, story.content, readingTime);
-    setEvaluation(evaluation_result);
-  };\n
   const calculateSimilarity = (str1, str2) => {
     const longer = str1.length > str2.length ? str1 : str2;
     const shorter = str1.length > str2.length ? str2 : str1;
@@ -238,6 +149,31 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
     }\n
     return feedback.join(' ');
   };\n
+  const handleStartReading = () => {
+    setIsReading(true);
+    setReadingTime(0);
+    setTranscript('');
+    setEvaluation(null);\n    
+    const cleanText = (text) => 
+      text.toLowerCase()
+        .replace(/[.!?,;:\\-—–]/g, '')
+        .split(/\\s+/)
+        .filter(w => w.length > 0);
+    storyWordsRef.current = cleanText(story.content);\n    
+    timerRef.current = setInterval(() => {
+      setReadingTime((prev) => prev + 1);
+    }, 1000);\n
+    if (recognitionRef.current) {
+      recognitionRef.current.start();
+    }
+  };\n
+  const handleFinishReading = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (recognitionRef.current) recognitionRef.current.stop();\n    
+    setIsReading(false);
+    const evaluation_result = evaluateReading(transcript, story.content, readingTime);
+    setEvaluation(evaluation_result);
+  };\n
   const handleShare = () => {
     const storyUrl = `${window.location.origin}?storyId=${story.id}`;
     navigator.clipboard.writeText(storyUrl);
@@ -273,40 +209,6 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
         <div className="story-content" style={{ marginBottom: '30px', lineHeight: '1.8', fontSize: '18px', whiteSpace: 'pre-wrap' }}>
           {story.content}
         </div>\n
-        {/* Hint System */}
-        {isReading && hint && (
-          <div style={{ 
-            background: '#fff3cd', 
-            padding: '15px', 
-            borderRadius: '8px', 
-            marginBottom: '20px',
-            border: '2px solid #ffc107'
-          }}>
-            {hint.type === 'phonetic' && (
-              <>
-                <p style={{ margin: '0 0 10px 0', fontSize: '16px', fontWeight: 'bold' }}>🔤 Sound it out:</p>
-                <p style={{ margin: '0 0 10px 0', fontSize: '20px', color: '#ff6b6b', fontWeight: 'bold', fontFamily: 'monospace' }}>
-                  {hint.phonetic}
-                </p>
-                <button
-                  onClick={() => speakWord(hint.word)}
-                  style={{
-                    background: '#ffc107',
-                    padding: '8px 15px',
-                    borderRadius: '5px',
-                    border: 'none',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    fontWeight: 'bold',
-                    color: '#000',
-                  }}
-                >
-                  🔊 Hear it
-                </button>
-              </>
-            )}
-          </div>
-        )}\n
         {!isReading && !evaluation && (
           <button 
             onClick={handleStartReading}
@@ -369,7 +271,6 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
                 setEvaluation(null);
                 setTranscript('');
                 setReadingTime(0);
-                setHint(null);
               }}
               style={{
                 background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
