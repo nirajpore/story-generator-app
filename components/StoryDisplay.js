@@ -16,6 +16,110 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
   const recognitionRef = useRef(null);
   const pauseTimerRef = useRef(null);
   const storyWordsRef = useRef([]);
+  const allTranscriptWordsRef = useRef([]);
+  const readingTimeRef = useRef(0);
+  const isReadingRef = useRef(false);
+  const pendingEvaluationRef = useRef(false);
+
+  const normalizeWords = (text) =>
+    text
+      .toLowerCase()
+      .replace(/[\u2018\u2019']/g, '')
+      .replace(/[.!?,;:\-—–"()[\]{}]/g, ' ')
+      .split(/\s+/)
+      .filter((word) => word.length > 0);
+
+  const calculateSimilarity = (str1, str2) => {
+    const longer = str1.length > str2.length ? str1 : str2;
+    const shorter = str1.length > str2.length ? str2 : str1;
+    if (longer.length === 0) return 1.0;
+
+    const editDistance = getEditDistance(longer, shorter);
+    return (longer.length - editDistance) / longer.length;
+  };
+
+  const getEditDistance = (s1, s2) => {
+    const costs = [];
+    for (let i = 0; i <= s1.length; i++) {
+      let lastValue = i;
+      for (let j = 0; j <= s2.length; j++) {
+        if (i === 0) {
+          costs[j] = j;
+        } else if (j > 0) {
+          let newValue = costs[j - 1];
+          if (s1.charAt(i - 1) !== s2.charAt(j - 1)) {
+            newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+          }
+          costs[j - 1] = lastValue;
+          lastValue = newValue;
+        }
+      }
+      if (i > 0) costs[s2.length] = lastValue;
+    }
+    return costs[s2.length];
+  };
+
+  const getCurrentWordProgress = (spokenWords, storyWords) => {
+    if (spokenWords.length === 0 || storyWords.length === 0) return 0;
+
+    let storyIndex = 0;
+
+    for (const spokenWord of spokenWords) {
+      let matchedIndex = -1;
+
+      for (let i = storyIndex; i < Math.min(storyIndex + 3, storyWords.length); i++) {
+        if (calculateSimilarity(spokenWord, storyWords[i]) >= 0.7) {
+          matchedIndex = i;
+          break;
+        }
+      }
+
+      if (matchedIndex !== -1) {
+        storyIndex = matchedIndex + 1;
+      }
+    }
+
+    return storyIndex;
+  };
+
+  const getStoryParagraphs = (text) => {
+    const normalizedText = text.replace(/\r\n/g, '\n').trim();
+
+    if (!normalizedText) return [];
+
+    if (normalizedText.includes('\n')) {
+      return normalizedText
+        .split(/\n\s*\n/)
+        .map((paragraph) => paragraph.trim())
+        .filter(Boolean);
+    }
+
+    const sentences = normalizedText.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [normalizedText];
+    const paragraphs = [];
+
+    for (let i = 0; i < sentences.length; i += 2) {
+      paragraphs.push(sentences.slice(i, i + 2).join(' ').trim());
+    }
+
+    return paragraphs.filter(Boolean);
+  };
+
+  const finalizeReadingSession = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
+
+    isReadingRef.current = false;
+    pendingEvaluationRef.current = false;
+    setIsReading(false);
+    setHint(null);
+
+    const evaluationResult = evaluateReading(
+      allTranscriptWordsRef.current,
+      story.content,
+      readingTimeRef.current
+    );
+    setEvaluation(evaluationResult);
+  };
 
   useEffect(() => {
     // Initialize Web Speech API
@@ -30,21 +134,38 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
         setHint(null);
         
         let finalTranscript = '';
+        let interimTranscript = '';
         
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript_chunk = event.results[i][0].transcript;
+          const transcriptChunk = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
-            finalTranscript += transcript_chunk + ' ';
+            finalTranscript += transcriptChunk + ' ';
+          } else {
+            interimTranscript += transcriptChunk + ' ';
           }
         }
-        
+
+        let nextFinalWords = allTranscriptWordsRef.current;
+
         if (finalTranscript) {
-          setAllTranscriptWords((prev) => {
-            const newWords = finalTranscript.toLowerCase().split(/\s+/).filter(w => w.length > 0);
-            const combined = [...prev, ...newWords];
-            setCurrentWordIndex(Math.min(combined.length, storyWordsRef.current.length));
-            return combined;
-          });
+          nextFinalWords = [...allTranscriptWordsRef.current, ...normalizeWords(finalTranscript)];
+          allTranscriptWordsRef.current = nextFinalWords;
+          setAllTranscriptWords(nextFinalWords);
+        }
+
+        const liveTranscriptWords = [...nextFinalWords, ...normalizeWords(interimTranscript)];
+        setCurrentWordIndex(getCurrentWordProgress(liveTranscriptWords, storyWordsRef.current));
+      };
+
+      recognitionRef.current.onend = () => {
+        if (pendingEvaluationRef.current) {
+          finalizeReadingSession();
+        }
+      };
+
+      recognitionRef.current.onerror = () => {
+        if (pendingEvaluationRef.current) {
+          finalizeReadingSession();
         }
       };
     }
@@ -122,6 +243,11 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
   };
 
   const handleStartReading = () => {
+    if (!recognitionRef.current) {
+      alert('Speech recognition is not supported in this browser.');
+      return;
+    }
+
     setIsReading(true);
     setReadingTime(0);
     setAllTranscriptWords([]);
@@ -129,61 +255,35 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
     setCurrentWordIndex(0);
     setHint(null);
     setLastSpokeTime(Date.now());
-    
-    const cleanText = (text) => 
-      text.toLowerCase()
-        .replace(/[.!?,;:\-—–]/g, '')
-        .split(/\s+/)
-        .filter(w => w.length > 0);
-    storyWordsRef.current = cleanText(story.content);
+
+    isReadingRef.current = true;
+    pendingEvaluationRef.current = false;
+    readingTimeRef.current = 0;
+    allTranscriptWordsRef.current = [];
+    storyWordsRef.current = normalizeWords(story.content);
     
     timerRef.current = setInterval(() => {
-      setReadingTime((prev) => prev + 1);
+      setReadingTime((prev) => {
+        const nextTime = prev + 1;
+        readingTimeRef.current = nextTime;
+        return nextTime;
+      });
     }, 1000);
 
-    if (recognitionRef.current) {
-      recognitionRef.current.start();
-    }
+    recognitionRef.current.start();
   };
 
   const handleFinishReading = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
-    if (recognitionRef.current) recognitionRef.current.stop();
-    
-    setIsReading(false);
-    const evaluation_result = evaluateReading(allTranscriptWords, story.content, readingTime);
-    setEvaluation(evaluation_result);
-  };
 
-  const calculateSimilarity = (str1, str2) => {
-    const longer = str1.length > str2.length ? str1 : str2;
-    const shorter = str1.length > str2.length ? str2 : str1;
-    if (longer.length === 0) return 1.0;
-    
-    const editDistance = getEditDistance(longer, shorter);
-    return (longer.length - editDistance) / longer.length;
-  };
-
-  const getEditDistance = (s1, s2) => {
-    const costs = [];
-    for (let i = 0; i <= s1.length; i++) {
-      let lastValue = i;
-      for (let j = 0; j <= s2.length; j++) {
-        if (i === 0) {
-          costs[j] = j;
-        } else if (j > 0) {
-          let newValue = costs[j - 1];
-          if (s1.charAt(i - 1) !== s2.charAt(j - 1)) {
-            newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
-          }
-          costs[j - 1] = lastValue;
-          lastValue = newValue;
-        }
-      }
-      if (i > 0) costs[s2.length] = lastValue;
+    if (!recognitionRef.current) {
+      finalizeReadingSession();
+      return;
     }
-    return costs[s2.length];
+
+    pendingEvaluationRef.current = true;
+    recognitionRef.current.stop();
   };
 
   const matchWords = (readWords, storyWords) => {
@@ -208,14 +308,8 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
 
   const evaluateReading = (readWordsArray, storyContent, timeTaken) => {
     let stars = 0;
-    
-    const cleanText = (text) => 
-      text.toLowerCase()
-        .replace(/[.!?,;:\-—–]/g, '')
-        .split(/\s+/)
-        .filter(w => w.length > 0);
 
-    const storyWords = cleanText(storyContent);
+    const storyWords = normalizeWords(storyContent);
     const { matchedCount, totalStoryWords } = matchWords(readWordsArray, storyWords);
     const accuracy = (matchedCount / totalStoryWords) * 100;
     
@@ -311,53 +405,47 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
 
   // Render story with highlighted current word
   const renderStoryWithHighlight = () => {
-    const words = story.content.split(/\s+/);
     let wordCounter = 0;
-    const result = [];
-    let buffer = [];
 
-    for (let i = 0; i < words.length; i++) {
-      const word = words[i];
-      const isCurrentWord = wordCounter === currentWordIndex;
-      const isRead = wordCounter < currentWordIndex;
-      
-      buffer.push(
-        <span
-          key={`word-${wordCounter}`}
-          style={{
-            backgroundColor: isCurrentWord ? '#ffd700' : isRead ? '#90EE90' : 'transparent',
-            padding: '2px 4px',
-            borderRadius: '3px',
-            marginRight: '4px',
-            fontWeight: isCurrentWord ? 'bold' : 'normal',
-            transition: 'background-color 0.3s',
-          }}
-        >
-          {word}
-        </span>
-      );
-      wordCounter++;
+    return getStoryParagraphs(story.content).map((paragraph, paragraphIndex) => {
+      const tokens = paragraph.match(/\S+|\s+/g) || [];
 
-      // Create paragraph breaks
-      if (word.includes('.') || word.includes('!') || word.includes('?')) {
-        result.push(
-          <p key={`para-${result.length}`} style={{ marginBottom: '15px', lineHeight: '1.8' }}>
-            {buffer}
-          </p>
-        );
-        buffer = [];
-      }
-    }
+      return (
+        <p key={`para-${paragraphIndex}`} style={{ marginBottom: '15px', lineHeight: '1.8' }}>
+          {tokens.map((token, tokenIndex) => {
+            if (/^\s+$/.test(token)) {
+              return <span key={`space-${paragraphIndex}-${tokenIndex}`}>{token}</span>;
+            }
 
-    if (buffer.length > 0) {
-      result.push(
-        <p key={`para-${result.length}`} style={{ marginBottom: '15px', lineHeight: '1.8' }}>
-          {buffer}
+            const normalizedToken = normalizeWords(token);
+
+            if (normalizedToken.length === 0) {
+              return <span key={`token-${paragraphIndex}-${tokenIndex}`}>{token}</span>;
+            }
+
+            const isCurrentWord = wordCounter === currentWordIndex;
+            const isRead = wordCounter < currentWordIndex;
+            const renderedWord = (
+              <span
+                key={`word-${wordCounter}`}
+                style={{
+                  backgroundColor: isCurrentWord ? '#ffd700' : isRead ? '#90EE90' : 'transparent',
+                  padding: '2px 4px',
+                  borderRadius: '3px',
+                  fontWeight: isCurrentWord ? 'bold' : 'normal',
+                  transition: 'background-color 0.3s',
+                }}
+              >
+                {token}
+              </span>
+            );
+
+            wordCounter++;
+            return renderedWord;
+          })}
         </p>
       );
-    }
-
-    return result;
+    });
   };
 
   return (
@@ -378,7 +466,11 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
           {isReading ? (
             renderStoryWithHighlight()
           ) : (
-            <div style={{ whiteSpace: 'pre-wrap' }}>{story.content}</div>
+            getStoryParagraphs(story.content).map((paragraph, index) => (
+              <p key={`story-paragraph-${index}`} style={{ marginBottom: '15px', whiteSpace: 'pre-wrap' }}>
+                {paragraph}
+              </p>
+            ))
           )}
         </div>
 
@@ -483,6 +575,9 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
                 setReadingTime(0);
                 setCurrentWordIndex(0);
                 setHint(null);
+                allTranscriptWordsRef.current = [];
+                readingTimeRef.current = 0;
+                pendingEvaluationRef.current = false;
               }}
               style={{
                 background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
