@@ -332,27 +332,41 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
     day: 'numeric',
   });
 
-  // Render story with highlighted current word
+  // Render story with highlighted current word - preserves paragraphs
   const renderStoryWithHighlight = () => {
-    const words = story.content.split(/\s+/);
-    return words.map((word, idx) => {
-      const isCurrentWord = idx === currentWordIndex;
-      const isRead = idx < currentWordIndex;
+    // Split by paragraphs first
+    const paragraphs = story.content.split('\n\n');
+    let wordCounter = 0;
+    
+    return paragraphs.map((paragraph, pIdx) => {
+      const words = paragraph.split(/\s+/);
+      const paraWords = words.map((word, wIdx) => {
+        const wordIndex = wordCounter;
+        wordCounter++;
+        const isCurrentWord = wordIndex === currentWordIndex;
+        const isRead = wordIndex < currentWordIndex;
+        
+        return (
+          <span
+            key={`${pIdx}-${wIdx}`}
+            style={{
+              backgroundColor: isCurrentWord ? '#ffd700' : isRead ? '#90EE90' : 'transparent',
+              padding: '2px 4px',
+              borderRadius: '3px',
+              marginRight: '4px',
+              fontWeight: isCurrentWord ? 'bold' : 'normal',
+              transition: 'background-color 0.3s',
+            }}
+          >
+            {word}
+          </span>
+        );
+      });
       
       return (
-        <span
-          key={idx}
-          style={{
-            backgroundColor: isCurrentWord ? '#ffd700' : isRead ? '#90EE90' : 'transparent',
-            padding: '2px 4px',
-            borderRadius: '3px',
-            marginRight: '4px',
-            fontWeight: isCurrentWord ? 'bold' : 'normal',
-            transition: 'background-color 0.3s',
-          }}
-        >
-          {word}
-        </span>
+        <p key={pIdx} style={{ marginBottom: '15px', lineHeight: '1.8' }}>
+          {paraWords}
+        </p>
       );
     });
   };
@@ -371,8 +385,10 @@ export default function StoryDisplay({ story, onBack, onDelete }) {
           {story.setting && <p><strong>Setting:</strong> {story.setting}</p>}
         </div>
 
-        <div className="story-content" style={{ marginBottom: '30px', lineHeight: '2', fontSize: '18px' }}>
-          {isReading ? renderStoryWithHighlight() : story.content}
+        <div className="story-content" style={{ marginBottom: '30px', lineHeight: '1.8', fontSize: '18px' }}>
+          {isReading ? renderStoryWithHighlight() : story.content.split('\n\n').map((para, idx) => (
+            <p key={idx} style={{ marginBottom: '15px' }}>{para}</p>
+          ))}
         </div>
 
         {/* Hint System */}
